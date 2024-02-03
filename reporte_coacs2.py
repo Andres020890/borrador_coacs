@@ -74,7 +74,7 @@ fig.add_trace(go.Scatter(x=calif_model['Fecha'], y=calif_model['PRED_BUENO'],
                          mode='lines+markers+text',
                          text=calif_model['CALIFICACION'],  # Agregar valores como etiquetas
                          textposition=['top center', 'bottom center'] * (len(calif_model) // 2) + ['top center'] * (len(calif_model) % 2),  # Posición de las etiquetas
-                         textfont=dict(size=7),
+                         textfont=dict(size=9),
                          line=dict(dash='dot', width=4, color='red'),
                          marker=dict(color='darkblue', size=9, opacity=0.8)))
 
@@ -997,9 +997,11 @@ res_final.loc['RESULTADO DEL EJERCICIO'] =res_final.loc['INGRESOS'] - res_final.
 
 # ACTIVOS PRODUCTIVOS
 
+bal_total = bal_total
+periodos = 'anuales'#=============> modificar
 cuentas = [1103,12,13,15,1901,190205,190210,
            190215,190220,190240,190280,190286]
-dfs1 = cuenta_balance(ruc, fecha, cuentas, bal_total)
+dfs1 = cuenta_balance(ruc, fecha, cuentas, periodos, bal_total)
 
 balance_actual = dfs1.get('bal_total3')
 balance_dic = dfs1.get('bal_dic')
@@ -1020,11 +1022,36 @@ otros_act = otros_act.cumsum()
 act_prod = act_prod.iloc[0:6,]
 act_prod.loc['OTROS ACTIVOS PRODUCTIVOS'] = otros_act.iloc[-1]
 
+act_prod = act_prod.drop('Participación', axis =1)
+act_prod['Participación'] = act_prod.iloc[:, 4] / act_prod.iloc[0,4]
+act_prod.insert(5, 'Participación',act_prod.pop('Participación'))
+
+#====  Gráfico activos improductivos
+
+fig = go.Figure(data=[go.Pie(labels=act_prod.index[1:], 
+                             values=act_prod.iloc[1:,4],
+                             showlegend=False,
+                             text = act_prod.iloc[1:,4].apply(convertir_a_dolares),
+                             textinfo='text+percent+label',
+                             textfont_size=8,
+                             marker= dict(colors = ['moccasin',
+                                                    'orange',
+                                                    'lightviolet',
+                                                    'indianred',
+                                                    'brown',
+                                                    'lightslategray']))])
+fig.update_layout(title='Composición Activo Productivo', 
+                  title_y=0.98,
+                  margin=dict(b=4, t=4, l=4, r=4))
+fig.show()
+
+
+
 # ACTIVOS IMPRODUCTIVOS
 
 
-cuentas = [11,1103,13,1499,15,16,17,18,19]
-dfs1 = cuenta_balance(ruc, fecha, cuentas, bal_total)
+cuentas = [11,1103,1499,15,16,17,18,19]
+dfs1 = cuenta_balance(ruc, fecha, cuentas, periodos, bal_total)
 
 balance_actual = dfs1.get('bal_total3')
 balance_dic = dfs1.get('bal_dic')
@@ -1045,16 +1072,86 @@ act_improd = act_improd.loc[['(FONDOS DISPONIBLES - BANCOS)',
                         'PROPIEDADES Y EQUIPO',
                         'OTROS ACTIVOS IMPRODUCTIVOS']]
 
-tot_act_improd = act_prod.cumsum()
+tot_act_improd = act_improd.cumsum() ############### ojo cambiar 
 act_improd.loc['ACTIVO IMPRODUCTIVO'] = tot_act_improd.iloc[-1]
 a_improd = act_improd.loc['ACTIVO IMPRODUCTIVO']
 act_improd = act_improd.drop(index='ACTIVO IMPRODUCTIVO')
 act_improd = pd.concat([act_improd.iloc[:0], a_improd.to_frame().transpose(), act_improd.iloc[0:]])
 
+act_improd = act_improd.drop('Participación', axis =1)
+act_improd['Participación'] = act_improd.iloc[:, 4] / act_improd.iloc[0,4]
+act_improd.insert(5, 'Participación',act_improd.pop('Participación'))
+
+act_improd.reset_index(inplace=True) #############
+act_improd['index'] = act_improd['index'].str.split().apply(lambda x: ' '.join(x[:3]))
+act_improd.set_index(act_improd['index'], inplace=True)
 
 estr_activo = pd.concat([act_prod, act_improd], axis=0)
 
+#====  Gráfico activos improductivos
 
+fig = go.Figure(data=[go.Pie(labels=act_improd.index[1:], 
+                             values=act_improd.iloc[1:,4],
+                             showlegend=False,
+                             text = act_improd.iloc[1:,4].apply(convertir_a_dolares),
+                             textinfo='text+percent+label',
+                             textfont_size=8,
+                             marker= dict(colors = ['moccasin',
+                                                    'orange',
+                                                    'lightviolet',
+                                                    'indianred',
+                                                    'brown',
+                                                    'lightslategray']))])
+fig.update_layout(title='Composición Activo Improductivo', 
+                  title_y=0.98,
+                  margin=dict(b=4, t=4, l=4, r=4))
+fig.show()
+
+
+### tabla de porcentajes de participación
+estr_act_tot = estr_activo.loc[['ACTIVO PRODUCTIVO','ACTIVO IMPRODUCTIVO']]
+estr_act_tot = estr_act_tot.iloc[:,:5]
+estr_act_tot.loc['TOTAL ACTIVO'] = estr_act_tot.loc['ACTIVO PRODUCTIVO']+ estr_act_tot.loc['ACTIVO IMPRODUCTIVO']
+estr_act_tot.loc['ACTIVO PRODUCTIVO (%)'] = estr_act_tot.loc['ACTIVO PRODUCTIVO'] / estr_act_tot.loc['TOTAL ACTIVO']
+estr_act_tot.loc['ACTIVO IMPRODUCTIVO (%)'] = estr_act_tot.loc['ACTIVO IMPRODUCTIVO'] / estr_act_tot.loc['TOTAL ACTIVO']
+
+
+
+etiq = estr_act_tot.columns[0:5]
+act_pr = pd.Series(estr_act_tot.iloc[3, 0:5])
+#act = act.str.replace('[$,]', '', regex=True).astype(float)
+act_imp = pd.Series(estr_act_tot.iloc[4, 0:5])
+
+
+# Razón de activos y pasivos
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=etiq,
+    y=act_pr,
+    name='Activos Productivos',
+    marker_color='indianred',
+    #text=act,
+    textposition='auto'
+))
+fig.add_trace(go.Bar(
+    x=etiq,
+    y=act_imp,
+    name='Activos Improductivos',
+    marker_color='rgb(55, 83, 109)',
+    #text=pas,
+    textposition='auto'
+))
+
+fig.update_layout(barmode='stack', xaxis_tickangle=-45, 
+                  title="Composición de Activos",
+                  xaxis_tickfont_size = 9,
+                  legend=dict(orientation='h', x=0.3, y=-0.2),
+                  height=400, 
+                  width=500
+                      )
+fig.update_traces(textangle=0, 
+                  texttemplate='%{y:.0%}')
 
 
 
@@ -1132,7 +1229,7 @@ fig.update_layout(
     title='Evolución Morosidad Vs. Cobertura',
     yaxis_title=f'{column_principal}',
     yaxis2=dict(title=f'{column_secundario}', overlaying='y', side='right'),
-    legend=dict(orientation='h', x=0.5, y=-0.15),
+    legend=dict(orientation='h', x=0.3, y=-0.3),
     margin=dict(b=50),
     showlegend=True 
 )
@@ -1328,7 +1425,7 @@ tab_mensual = cart_bruta_mes
 
 cart_bruta_fin = calcular_variaciones (tab_datos, tab_dic, tab_mensual)
 
-graf_cart_bruta_fin = cart_bruta_fin.iloc[:,0:-10].T
+graf_cart_bruta_fin = cart_bruta_fin.iloc[:,0:-11].T
 
 
 ####
